@@ -401,3 +401,107 @@ describe("Tasks — one global list shared by every visitor", () => {
     expect(document.body.textContent ?? "").not.toMatch(/owner|my tasks|your tasks|account/i);
   });
 });
+
+const TITLES = ["Submit expense report", "Buy milk", "Book dentist appointment"];
+
+function storedValues() {
+  const values: string[] = [];
+  for (const store of [window.localStorage, window.sessionStorage]) {
+    for (let i = 0; i < store.length; i += 1) {
+      const key = store.key(i);
+      if (key !== null) values.push(key, store.getItem(key) ?? "");
+    }
+  }
+  return values.join(" ");
+}
+
+describe("Tasks — the list persists across sessions and devices", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  it("[AC-020] reads the persisted list from the server every time the app is opened", async () => {
+    const firstOpen = render(<Tasks />);
+    expect(titlesOf(await screen.findByTestId("tasks-newest-first-list"))).toEqual(TITLES);
+    firstOpen.unmount();
+
+    render(<Tasks />);
+    expect(titlesOf(await screen.findByTestId("tasks-newest-first-list"))).toEqual(TITLES);
+    expect(listTasks.mock.calls).toEqual([["/tasks"], ["/tasks"]]);
+  });
+
+  it("[AC-020] shows the same tasks when the app is closed and reopened in a new session", async () => {
+    const session = render(<Tasks />);
+    await screen.findByTestId("tasks-newest-first-list");
+    session.unmount();
+
+    // A new session: the browser kept nothing from the closed one.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+
+    render(<Tasks />);
+    expect(titlesOf(await screen.findByTestId("tasks-newest-first-list"))).toEqual(TITLES);
+  });
+
+  it("[AC-020] shows the server's list rather than a stale locally cached one", async () => {
+    window.localStorage.setItem(
+      "tasks",
+      JSON.stringify([
+        { id: "tsk_old", title: "Stale local copy", done: false, createdAt: "2026-11-20T08:00:00" },
+      ]),
+    );
+
+    render(<Tasks />);
+
+    expect(titlesOf(await screen.findByTestId("tasks-newest-first-list"))).toEqual(TITLES);
+    expect(screen.queryByRole("heading", { name: "Stale local copy" })).not.toBeInTheDocument();
+  });
+
+  it("[AC-021] shows the persisted list on a device that has no local data", async () => {
+    expect(storedValues()).toBe("");
+
+    render(<Tasks />);
+
+    expect(titlesOf(await screen.findByTestId("tasks-newest-first-list"))).toEqual(TITLES);
+    expect(listTasks).toHaveBeenCalledWith("/tasks");
+  });
+
+  it("[AC-021] shows a task added on one device when another device loads the list", async () => {
+    const user = userEvent.setup();
+    const deviceA = render(<Tasks />);
+    await screen.findByTestId("tasks-newest-first-list");
+
+    await user.type(
+      screen.getByTestId("title-max-100-characters-input"),
+      "Pack the laptop charger",
+    );
+    await user.click(screen.getByTestId("add-task-btn"));
+    deviceA.unmount();
+
+    // Another device: nothing stored locally, the server answers with the persisted list.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    serverReturns([
+      {
+        id: "tsk_5100",
+        title: "Pack the laptop charger",
+        done: false,
+        createdAt: "2026-11-25T10:10:00",
+      },
+      ...TASKS,
+    ]);
+    render(<Tasks />);
+
+    expect(titlesOf(await screen.findByTestId("tasks-newest-first-list"))).toEqual([
+      "Pack the laptop charger",
+      ...TITLES,
+    ]);
+  });
+
+  it("[AC-021] keeps no copy of the shared list in browser storage", async () => {
+    await renderList();
+
+    expect(storedValues()).not.toMatch(/Buy milk|Submit expense report/);
+  });
+});
