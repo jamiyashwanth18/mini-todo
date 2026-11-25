@@ -20,6 +20,9 @@ def upgrade() -> None:
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("password_hash", sa.String(255), nullable=False),
         sa.Column("role", sa.String(50), nullable=False),
+        # One account per address: the database itself refuses a second row with the same
+        # email, so two sign-ups racing each other cannot both create the same user.
+        sa.UniqueConstraint("email", name="uq_users_email"),
     )
 
 

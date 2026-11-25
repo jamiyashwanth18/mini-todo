@@ -5,6 +5,8 @@ generated route returns until it has been implemented. Every model is an ApiMode
 so its JSON uses camelCase names (app/api_model.py).
 """
 
+from datetime import datetime
+
 from app.api_model import ApiModel
 
 
@@ -30,3 +32,12 @@ class UserRead(ApiModel):
     id: str
     email: str
     role: str
+
+
+class TaskRead(ApiModel):
+    """One task on the shared list: a title, a done/not-done status and when it was added."""
+
+    id: str
+    title: str
+    done: bool
+    created_at: datetime
