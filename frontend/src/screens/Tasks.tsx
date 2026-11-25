@@ -12,7 +12,9 @@ const { Plus, Check, X, Clock, Trash, AlertCircle } = Icons;
 const PRODUCT = "Mini Todo";
 const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 const MAX_TITLE = 100;
-const NOW_STAMP = "2026-11-25 10:00";
+// A row added here carries this prefix until the server answers with the task's own id,
+// so a key of ours is never mistaken for one the shared list handed out.
+const LOCAL_ID_PREFIX = "local-";
 
 // A task holds a title, a done/not-done status and a creation time. Nothing else is
 // stored or shown: no due date, no priority, no category, no description.
@@ -56,6 +58,9 @@ export default function Screen() {
   const [status, setStatus] = React.useState("");
   const [freshId, setFreshId] = React.useState(null);
   const [pendingDelete, setPendingDelete] = React.useState(null);
+  // When the server last confirmed a read or a write, and what it refused, if anything.
+  const [syncedAt, setSyncedAt] = React.useState(null);
+  const [syncError, setSyncError] = React.useState("");
 
   const inputRef = React.useRef(null);
   const cancelRef = React.useRef(null);
@@ -81,6 +86,7 @@ export default function Screen() {
       } else {
         setTasks(data);
         setLoadFailed(false);
+        setSyncedAt(new Date().toISOString());
       }
       setLoading(false);
     })();
@@ -104,7 +110,26 @@ export default function Screen() {
     if (returnFocusRef.current && returnFocusRef.current.focus) returnFocusRef.current.focus();
   }
 
-  function handleSubmit(e) {
+  // Every change to the shared list is a call to the server; the row changes on screen at
+  // once so the app stays usable, and a refused or unreachable call is reported instead of
+  // being swallowed. What the visitor did stays on screen, so nothing they typed is lost.
+  async function send(call) {
+    try {
+      const answer = (await call()) ?? {};
+      if (answer.error) return { ok: false };
+      setSyncError("");
+      setSyncedAt(new Date().toISOString());
+      return { ok: true, data: answer.data };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  function onlyLocal(id) {
+    return String(id).startsWith(LOCAL_ID_PREFIX);
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) {
@@ -113,21 +138,41 @@ export default function Screen() {
       if (inputRef.current) inputRef.current.focus();
       return;
     }
-    const id = "local-" + counterRef.current++;
+    const localId = LOCAL_ID_PREFIX + counterRef.current++;
     setTasks((prev) => [
-      { id, title: trimmed, done: false, createdAt: new Date().toISOString() },
+      { id: localId, title: trimmed, done: false, createdAt: new Date().toISOString() },
       ...prev,
     ]);
     setTitle("");
     setError("");
-    setFreshId(id);
+    setFreshId(localId);
     setStatus("“" + trimmed + "” added to the top of the shared list.");
     if (inputRef.current) inputRef.current.focus();
+
+    const { ok, data } = await send(() => api.POST("/tasks", { body: { title: trimmed } }));
+    if (!ok) {
+      setSyncError("“" + trimmed + "” could not be saved on the server.");
+      return;
+    }
+    if (data && data.id) {
+      // The task as the server stored it: its own id and creation time replace ours.
+      setTasks((prev) => prev.map((t) => (t.id === localId ? { ...t, ...data } : t)));
+      setFreshId(data.id);
+    }
   }
 
-  function toggleDone(task) {
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, done: !t.done } : t)));
-    setStatus("“" + task.title + "” is now marked " + (task.done ? "not done" : "done") + ".");
+  async function toggleDone(task) {
+    const done = !task.done;
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, done } : t)));
+    setStatus("“" + task.title + "” is now marked " + (done ? "done" : "not done") + ".");
+
+    // A row the server never accepted has no task to change there; the refused add
+    // already said so, so there is nothing more to report.
+    if (onlyLocal(task.id)) return;
+    const { ok } = await send(() =>
+      api.PATCH("/tasks/{id}", { params: { path: { id: task.id } }, body: { done } }),
+    );
+    if (!ok) setSyncError("“" + task.title + "” could not be saved on the server.");
   }
 
   function askDelete(task, e) {
@@ -135,12 +180,19 @@ export default function Screen() {
     setPendingDelete(task);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     const victim = pendingDelete;
+    if (!victim) return;
     setTasks((prev) => prev.filter((t) => t.id !== victim.id));
     setPendingDelete(null);
     setStatus("Task deleted");
     if (inputRef.current) inputRef.current.focus();
+
+    if (onlyLocal(victim.id)) return;
+    const { ok } = await send(() =>
+      api.DELETE("/tasks/{id}", { params: { path: { id: victim.id } } }),
+    );
+    if (!ok) setSyncError("“" + victim.title + "” could not be removed on the server.");
   }
 
   const focusRing =
@@ -210,7 +262,7 @@ export default function Screen() {
         className="mt-3 text-xs uppercase tracking-[0.2em]"
         style={{ fontFamily: MONO, fontVariantNumeric: "tabular-nums", color: brand.neutralColor }}
       >
-        Saved on the server · last synced {NOW_STAMP}
+        Saved on the server · last synced {syncedAt ? formatStamp(syncedAt) : "—"}
       </p>
 
       <form
@@ -335,6 +387,17 @@ export default function Screen() {
       >
         {status}
       </p>
+
+      {syncError ? (
+        <p
+          aria-live="polite"
+          className="mt-2 flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase tracking-[0.15em]"
+          style={{ border: hairline, fontFamily: MONO, color: brand.primaryColor }}
+        >
+          <AlertCircle className="h-4 w-4" aria-hidden="true" />
+          {syncError}
+        </p>
+      ) : null}
 
       {/* b-4-0 */}
       <section data-wf="b-4-0" className="mt-8">
