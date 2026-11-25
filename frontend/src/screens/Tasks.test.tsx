@@ -253,3 +253,50 @@ describe("Tasks — minimal task data", () => {
     expect(screen.getByRole("heading", { name: "Submit expense report" })).toBeInTheDocument();
   });
 });
+
+describe("Tasks — empty state", () => {
+  it("[AC-009] shows the 'No tasks yet' empty state when the shared list has no tasks", async () => {
+    serverReturns([]);
+    render(<Tasks />);
+
+    const empty = await screen.findByTestId("no-tasks-yet-empty");
+    expect(within(empty).getByText("No tasks yet")).toBeInTheDocument();
+  });
+
+  it("[AC-009] shows no task list and no load error alongside the empty state", async () => {
+    serverReturns([]);
+    render(<Tasks />);
+
+    await screen.findByTestId("no-tasks-yet-empty");
+    expect(screen.queryByTestId("tasks-newest-first-list")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tasks could not be loaded")).not.toBeInTheDocument();
+  });
+
+  it("[AC-010] replaces the empty state with the list containing the first added task", async () => {
+    const user = userEvent.setup();
+    serverReturns([]);
+    render(<Tasks />);
+    await screen.findByTestId("no-tasks-yet-empty");
+
+    await user.type(screen.getByTestId("title-max-100-characters-input"), "Buy milk");
+    await user.click(screen.getByTestId("add-task-btn"));
+
+    expect(screen.queryByTestId("no-tasks-yet-empty")).not.toBeInTheDocument();
+    const list = screen.getByTestId("tasks-newest-first-list");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(list).getByRole("heading", { name: "Buy milk" })).toBeInTheDocument();
+  });
+
+  it("[AC-010] keeps the empty state when the add is refused for a missing title", async () => {
+    const user = userEvent.setup();
+    serverReturns([]);
+    render(<Tasks />);
+    await screen.findByTestId("no-tasks-yet-empty");
+
+    await user.click(screen.getByTestId("add-task-btn"));
+
+    expect(screen.getByText("A title is required")).toBeInTheDocument();
+    expect(screen.getByTestId("no-tasks-yet-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("tasks-newest-first-list")).not.toBeInTheDocument();
+  });
+});
