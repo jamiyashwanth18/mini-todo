@@ -16,27 +16,26 @@ const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 const MAX_TITLE = 100;
 const NOW_STAMP = "2026-11-25 10:00";
 
+// A task holds a title, a done/not-done status and a creation time. Nothing else is
+// stored or shown: no due date, no priority, no category, no description.
 const SEED_TASKS = [
   {
     id: "tsk_4812",
     title: "Submit expense report",
     done: false,
     created_at: "2026-11-25 09:58",
-    added: "added 2 minutes ago",
   },
   {
     id: "tsk_4809",
     title: "Buy milk",
     done: false,
     created_at: "2026-11-25 09:42",
-    added: "added 18 minutes ago",
   },
   {
     id: "tsk_4791",
     title: "Book dentist appointment",
     done: true,
     created_at: "2026-11-24 16:20",
-    added: "added yesterday 16:20",
   },
 ];
 
@@ -77,16 +76,13 @@ export default function Screen() {
     e.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) {
-      setError("A title is required. Type what needs doing, then add it.");
+      setError("A title is required");
       setStatus("");
       if (inputRef.current) inputRef.current.focus();
       return;
     }
     const id = "tsk_" + counterRef.current++;
-    setTasks((prev) => [
-      { id, title: trimmed, done: false, created_at: NOW_STAMP, added: "added just now" },
-      ...prev,
-    ]);
+    setTasks((prev) => [{ id, title: trimmed, done: false, created_at: NOW_STAMP }, ...prev]);
     setTitle("");
     setError("");
     setFreshId(id);
@@ -108,7 +104,7 @@ export default function Screen() {
     const victim = pendingDelete;
     setTasks((prev) => prev.filter((t) => t.id !== victim.id));
     setPendingDelete(null);
-    setStatus("“" + victim.title + "” deleted from the shared list.");
+    setStatus("Task deleted");
     if (inputRef.current) inputRef.current.focus();
   }
 
@@ -139,6 +135,7 @@ export default function Screen() {
             {PRODUCT} / Index
           </p>
           <h1
+            data-testid="shared-to-do-list-title"
             className="mt-2 text-6xl font-bold leading-none tracking-tight sm:text-7xl"
             style={{ fontFamily: brand.fontHeading }}
           >
@@ -181,7 +178,12 @@ export default function Screen() {
         Saved on the server · last synced {NOW_STAMP}
       </p>
 
-      <form onSubmit={handleSubmit} noValidate className="mt-8 grid grid-cols-12 gap-4">
+      <form
+        data-testid="add-a-task-form"
+        onSubmit={handleSubmit}
+        noValidate
+        className="mt-8 grid grid-cols-12 gap-4"
+      >
         {/* b-2-0 */}
         <div
           data-wf="b-2-0"
@@ -205,6 +207,7 @@ export default function Screen() {
           </Label>
           <Input
             data-wf="i-2-0-0"
+            data-testid="title-max-100-characters-input"
             id="task-title"
             ref={inputRef}
             name="title"
@@ -233,7 +236,8 @@ export default function Screen() {
             className="mt-2 text-xs"
             style={{ fontFamily: MONO, color: brand.neutralColor }}
           >
-            Press Enter to add. Titles can’t be edited later — delete and re-add instead.
+            Maximum 100 characters. Press Enter to add. Titles can’t be edited later — delete and
+            re-add instead.
           </p>
         </div>
 
@@ -241,6 +245,7 @@ export default function Screen() {
         <div className="col-span-12 md:col-span-3 flex">
           <Button
             data-wf="b-2-1"
+            data-testid="add-task-btn"
             type="submit"
             className={
               "wf-shift w-full min-h-[56px] items-center justify-center gap-2 px-4 py-4 text-sm font-bold uppercase tracking-[0.2em] transition-transform hover:-translate-x-1 hover:-translate-y-1 active:translate-x-0 active:translate-y-0 " +
@@ -274,7 +279,7 @@ export default function Screen() {
           }}
         >
           {title.length}/{MAX_TITLE} characters used.
-          {atLimit ? " Maximum reached — the limit is 100." : ""}
+          {atLimit ? " Maximum 100 characters." : ""}
         </p>
         {error ? (
           <p
@@ -309,6 +314,7 @@ export default function Screen() {
           /* b-6-0 */
           <div
             data-wf="b-6-0"
+            data-testid="no-tasks-yet-empty"
             className="mt-6 p-8 text-center"
             style={{
               border: thick,
@@ -323,7 +329,7 @@ export default function Screen() {
             />
           </div>
         ) : (
-          <ol className="mt-6 space-y-6">
+          <ol data-testid="tasks-newest-first-list" className="mt-6 space-y-6">
             {tasks.map((task, index) => (
               <li
                 key={task.id}
@@ -379,8 +385,6 @@ export default function Screen() {
                         {task.done ? "Done" : "Not done"}
                       </span>
                       <span aria-hidden="true">·</span>
-                      <span>{task.added}</span>
-                      <span aria-hidden="true">·</span>
                       <span>{task.created_at}</span>
                     </p>
                   </div>
@@ -391,6 +395,7 @@ export default function Screen() {
                     /* b-5-1 */
                     <Button
                       data-wf="b-5-1"
+                      data-testid="mark-not-done-btn"
                       type="button"
                       onClick={() => toggleDone(task)}
                       className={
@@ -413,6 +418,7 @@ export default function Screen() {
                     /* b-5-0 */
                     <Button
                       data-wf="b-5-0"
+                      data-testid="mark-done-btn"
                       type="button"
                       aria-label="Mark done"
                       onClick={() => toggleDone(task)}
@@ -436,6 +442,7 @@ export default function Screen() {
                   {/* b-5-2 */}
                   <Button
                     data-wf="b-5-2"
+                    data-testid="delete-btn"
                     type="button"
                     onClick={(e) => askDelete(task, e)}
                     className={
@@ -468,6 +475,7 @@ export default function Screen() {
           {/* b-7-0 */}
           <div
             data-wf="b-7-0"
+            data-testid="delete-this-task-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-title"
@@ -506,13 +514,14 @@ export default function Screen() {
                   color: brand.neutralColor,
                 }}
               >
-                {pendingDelete.id} · {pendingDelete.created_at}
+                {pendingDelete.created_at}
               </p>
             </div>
             <div className="grid grid-cols-2" style={{ borderTop: thick }}>
               {/* b-8-0 */}
               <Button
                 data-wf="b-8-0"
+                data-testid="cancel-btn"
                 type="button"
                 ref={cancelRef}
                 onClick={closeDialog}
@@ -534,6 +543,7 @@ export default function Screen() {
               {/* b-8-1 */}
               <Button
                 data-wf="b-8-1"
+                data-testid="delete-task-btn"
                 type="button"
                 onClick={confirmDelete}
                 className={
