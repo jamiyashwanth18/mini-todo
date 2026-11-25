@@ -1,5 +1,4 @@
 // @ts-nocheck -- generated from the approved design under its JS runtime contract; not hand-written TypeScript.
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import React from "react";
 
 import * as UI from "@/lib/ui";
@@ -7,9 +6,7 @@ import { Icons } from "@/lib/icons";
 import { brand } from "@/lib/brand";
 import { api } from "@/api/client";
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { Button, Input, Label, Empty } = UI;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { Plus, Check, X, Clock, Trash, AlertCircle } = Icons;
 
 const PRODUCT = "Mini Todo";
@@ -63,7 +60,10 @@ export default function Screen() {
   const inputRef = React.useRef(null);
   const cancelRef = React.useRef(null);
   const returnFocusRef = React.useRef(null);
-  const counterRef = React.useRef(4813);
+  // Counts the rows added in this browser session so each gets its own React key. The
+  // "local-" prefix keeps such a key apart from any id the server hands out, whatever the
+  // ids on the shared list look like.
+  const counterRef = React.useRef(1);
 
   const thick = `3px solid ${brand.primaryColor}`;
   const hairline = `1px solid ${brand.primaryColor}`;
@@ -113,7 +113,7 @@ export default function Screen() {
       if (inputRef.current) inputRef.current.focus();
       return;
     }
-    const id = "tsk_" + counterRef.current++;
+    const id = "local-" + counterRef.current++;
     setTasks((prev) => [
       { id, title: trimmed, done: false, createdAt: new Date().toISOString() },
       ...prev,

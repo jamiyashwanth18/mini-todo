@@ -13,7 +13,7 @@ platform always sets it.
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import uuid4
 
 import bcrypt
@@ -21,6 +21,7 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api_model import ApiModel
@@ -34,10 +35,6 @@ TOKEN_LIFETIME = timedelta(hours=12)
 _ALGORITHM = "HS256"
 _SECRET = os.getenv("JWT_SECRET_KEY") or secrets.token_urlsafe(32)
 _bearer = HTTPBearer(auto_error=False)
-# The users table may come from the approved data model, so its key is read, not assumed:
-# an integer key is made by the database, a text key here.
-_KEY_COLUMN = User.__mapper__.primary_key[0]
-_KEY = User.__mapper__.get_property_by_column(_KEY_COLUMN).key
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -75,25 +72,33 @@ def find_user(session: Session, email: str) -> User | None:
 
 
 def ensure_user(session: Session, *, email: str, password: str, role: str) -> bool:
-    """Create the user unless one with this email exists. True when it was created."""
+    """Create the user unless one with this email exists. True when it was created.
+
+    The email column is unique, so two callers seeding the same user at the same moment
+    cannot both insert it: the second insert breaks that constraint, and this reports the
+    user as already there rather than failing. The insert runs in a savepoint so a refused
+    one leaves the caller's transaction, and everything it had already done, intact.
+    """
     if find_user(session, email) is not None:
         return False
-    values: dict[str, Any] = {
-        "email": email,
-        "password_hash": hash_password(password),
-        "role": role,
-    }
-    if _KEY_COLUMN.type.python_type is str:
-        values[_KEY] = str(uuid4())
-    session.add(User(**values))
-    session.flush()
+    user = User(
+        id=str(uuid4()),
+        email=email,
+        password_hash=hash_password(password),
+        role=role,
+    )
+    try:
+        with session.begin_nested():
+            session.add(user)
+    except IntegrityError:
+        return False
     return True
 
 
 def issue_token(user: User) -> str:
     now = datetime.now(UTC)
     claims = {
-        "sub": str(getattr(user, _KEY)),
+        "sub": user.id,
         "role": user.role,
         "iat": now,
         "exp": now + TOKEN_LIFETIME,
@@ -118,10 +123,10 @@ def current_user(
         raise _refused()
     try:
         claims = jwt.decode(credentials.credentials, _SECRET, algorithms=[_ALGORITHM])
-        key = _KEY_COLUMN.type.python_type(claims["sub"])
-    except (jwt.PyJWTError, KeyError, TypeError, ValueError):
+        user_id = str(claims["sub"])
+    except (jwt.PyJWTError, KeyError):
         raise _refused() from None
-    user = session.get(User, key)
+    user = session.get(User, user_id)
     if user is None:
         raise _refused()
     return user
@@ -137,4 +142,4 @@ def login(body: LoginRequest, session: Annotated[Session, Depends(get_db)]) -> L
 
 @router.get("/me")
 def me(user: Annotated[User, Depends(current_user)]) -> CurrentUser:
-    return CurrentUser(id=str(getattr(user, _KEY)), email=user.email, role=user.role)
+    return CurrentUser(id=user.id, email=user.email, role=user.role)
