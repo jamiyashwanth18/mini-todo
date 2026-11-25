@@ -300,3 +300,104 @@ describe("Tasks — empty state", () => {
     expect(screen.queryByTestId("tasks-newest-first-list")).not.toBeInTheDocument();
   });
 });
+
+describe("Tasks — one global list shared by every visitor", () => {
+  it("[AC-011] reads the one shared list with no visitor or session identifier", async () => {
+    await renderList();
+
+    expect(listTasks.mock.calls).toEqual([["/tasks"]]);
+  });
+
+  it("[AC-011] shows another visitor's task on a fresh session opening the app", async () => {
+    const user = userEvent.setup();
+    serverReturns([]);
+    const firstVisitor = render(<Tasks />);
+    await screen.findByTestId("no-tasks-yet-empty");
+
+    await user.type(screen.getByTestId("title-max-100-characters-input"), "Refill the printer");
+    await user.click(screen.getByTestId("add-task-btn"));
+    expect(
+      within(screen.getByTestId("tasks-newest-first-list")).getByRole("heading", {
+        name: "Refill the printer",
+      }),
+    ).toBeInTheDocument();
+    firstVisitor.unmount();
+
+    serverReturns([
+      {
+        id: "tsk_5001",
+        title: "Refill the printer",
+        done: false,
+        createdAt: "2026-11-25T10:05:00",
+      },
+      ...TASKS,
+    ]);
+    render(<Tasks />);
+
+    const list = await screen.findByTestId("tasks-newest-first-list");
+    expect(titlesOf(list)).toEqual([
+      "Refill the printer",
+      "Submit expense report",
+      "Buy milk",
+      "Book dentist appointment",
+    ]);
+  });
+
+  it("[AC-012] offers mark done and delete on every task of the shared list", async () => {
+    const list = await renderList();
+
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(TASKS.length);
+    for (const row of rows) {
+      expect(
+        within(row).queryByTestId("mark-done-btn") ?? within(row).getByTestId("mark-not-done-btn"),
+      ).toBeInTheDocument();
+      expect(within(row).getByTestId("delete-btn")).toBeEnabled();
+    }
+  });
+
+  it("[AC-012] marks a task added by another visitor done and not done again", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[1];
+    expect(within(row).getByRole("heading", { name: "Buy milk" })).toBeInTheDocument();
+
+    await user.click(within(row).getByTestId("mark-done-btn"));
+    expect(within(row).getByText("Done")).toBeInTheDocument();
+
+    await user.click(within(row).getByTestId("mark-not-done-btn"));
+    expect(within(row).getByText("Not done")).toBeInTheDocument();
+  });
+
+  it("[AC-012] deletes a task added by another visitor from the shared list", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[2];
+    await user.click(within(row).getByTestId("delete-btn"));
+
+    const modal = screen.getByTestId("delete-this-task-modal");
+    expect(within(modal).getByText("Delete this task?")).toBeInTheDocument();
+    await user.click(within(modal).getByTestId("delete-task-btn"));
+
+    expect(screen.getByText("Task deleted")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Book dentist appointment" }),
+    ).not.toBeInTheDocument();
+    expect(titlesOf(screen.getByTestId("tasks-newest-first-list"))).toEqual([
+      "Submit expense report",
+      "Buy milk",
+    ]);
+  });
+
+  it("[AC-012] asks for no sign-in and shows no ownership on the shared list", async () => {
+    await renderList();
+
+    expect(
+      screen.queryByRole("button", { name: /sign in|sign up|log in|log out|sign out/i }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelectorAll('input[type="password"]')).toHaveLength(0);
+    expect(document.body.textContent ?? "").not.toMatch(/owner|my tasks|your tasks|account/i);
+  });
+});
