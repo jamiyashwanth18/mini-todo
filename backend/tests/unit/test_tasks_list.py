@@ -1,6 +1,7 @@
 """The shared task list: GET /tasks newest-first (AC-007, AC-008) and PATCH /tasks/{id}
 setting a task's done status in place, on the one shared list (AC-013, AC-014), either
-way round so marking done can be taken back (AC-015)."""
+way round so marking done can be taken back (AC-015), and DELETE /tasks/{id} removing a
+task for good once the SPA has confirmed (AC-017), down to an empty list (AC-019)."""
 
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -215,6 +216,86 @@ def test_ac015_a_toggle_back_without_a_done_status_is_refused(
 
     assert response.status_code == 400, response.text
     assert client.get("/tasks").json()[0]["done"] is True
+
+
+def test_ac017_a_confirmed_delete_removes_the_task(client: TestClient, db_session: Session) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+
+    response = client.delete(f"/tasks/{task.id}")
+
+    assert response.status_code == 204, response.text
+    assert response.content == b""
+    assert client.get("/tasks").json() == []
+
+
+def test_ac017_a_deleted_task_is_gone_for_good_on_a_later_read(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+
+    assert client.delete(f"/tasks/{task.id}").status_code == 204
+    assert db_session.get(Task, task.id) is None
+    assert client.get("/tasks").json() == []
+    assert client.delete(f"/tasks/{task.id}").status_code == 404
+
+
+def test_ac017_a_deleted_task_no_longer_appears_for_any_visitor(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+    kept = _add_task(db_session, "Walk the dog", minutes_ago=1)
+    db_session.commit()
+
+    assert client.delete(f"/tasks/{task.id}").status_code == 204
+
+    another_visitor = TestClient(app)
+    assert [item["id"] for item in another_visitor.get("/tasks").json()] == [kept.id]
+
+
+def test_ac017_only_the_chosen_task_is_deleted(client: TestClient, db_session: Session) -> None:
+    _add_task(db_session, "Oldest", minutes_ago=30)
+    middle = _add_task(db_session, "Middle", minutes_ago=10, done=True)
+    _add_task(db_session, "Newest", minutes_ago=1)
+
+    assert client.delete(f"/tasks/{middle.id}").status_code == 204
+
+    tasks = client.get("/tasks").json()
+    assert [task["title"] for task in tasks] == ["Newest", "Oldest"]
+    assert [task["done"] for task in tasks] == [False, False]
+
+
+def test_ac017_deleting_an_unknown_task_is_refused(client: TestClient, db_session: Session) -> None:
+    kept = _add_task(db_session, "Buy milk", minutes_ago=5)
+
+    response = client.delete(f"/tasks/{uuid4()}")
+
+    assert response.status_code == 404, response.text
+    assert [item["id"] for item in client.get("/tasks").json()] == [kept.id]
+
+
+def test_ac019_deleting_the_last_remaining_task_empties_the_list(
+    client: TestClient, db_session: Session
+) -> None:
+    first = _add_task(db_session, "Buy milk", minutes_ago=5)
+    second = _add_task(db_session, "Walk the dog", minutes_ago=1)
+
+    assert client.delete(f"/tasks/{second.id}").status_code == 204
+    assert [item["id"] for item in client.get("/tasks").json()] == [first.id]
+
+    assert client.delete(f"/tasks/{first.id}").status_code == 204
+    assert client.get("/tasks").json() == []
+
+
+def test_ac019_a_task_added_after_the_list_was_emptied_is_the_only_one_left(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+    assert client.delete(f"/tasks/{task.id}").status_code == 204
+
+    created = client.post("/tasks", json={"title": "Walk the dog"})
+
+    assert created.status_code == 201, created.text
+    assert [item["title"] for item in client.get("/tasks").json()] == ["Walk the dog"]
 
 
 def test_ac014_the_new_status_is_saved_on_the_shared_list_for_every_visitor(

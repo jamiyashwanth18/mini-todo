@@ -6,13 +6,16 @@ import { api } from "@/api/client";
 
 import Tasks from "./Tasks";
 
-vi.mock("@/api/client", () => ({ api: { GET: vi.fn(), PATCH: vi.fn() } }));
+vi.mock("@/api/client", () => ({ api: { GET: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() } }));
 
 type ApiTask = { id: string; title: string; done: boolean; createdAt: string };
 
 const listTasks = vi.mocked(api.GET as unknown as (path: string) => Promise<unknown>);
 const patchTask = vi.mocked(
   api.PATCH as unknown as (path: string, init: unknown) => Promise<unknown>,
+);
+const deleteTask = vi.mocked(
+  api.DELETE as unknown as (path: string, init: unknown) => Promise<unknown>,
 );
 
 const TASKS: ApiTask[] = [
@@ -50,6 +53,8 @@ beforeEach(() => {
   listTasks.mockReset();
   patchTask.mockReset();
   patchTask.mockResolvedValue({ data: undefined, error: undefined });
+  deleteTask.mockReset();
+  deleteTask.mockResolvedValue({ data: undefined, error: undefined });
   serverReturns(TASKS);
 });
 
@@ -719,5 +724,169 @@ describe("Tasks — toggle a done task back to not-done", () => {
         body: { done: false },
       }),
     );
+  });
+});
+
+describe("Tasks — delete a task after confirming", () => {
+  it("[AC-016] asks to confirm and deletes nothing yet when delete is chosen", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+    expect(screen.queryByTestId("delete-this-task-modal")).not.toBeInTheDocument();
+
+    const row = within(list).getAllByRole("listitem")[1];
+    await user.click(within(row).getByTestId("delete-btn"));
+
+    const modal = screen.getByTestId("delete-this-task-modal");
+    expect(within(modal).getByText("Delete this task?")).toBeInTheDocument();
+    expect(within(modal).getByTestId("cancel-btn")).toBeEnabled();
+    expect(within(modal).getByTestId("delete-task-btn")).toBeEnabled();
+    expect(deleteTask).not.toHaveBeenCalled();
+    expect(titlesOf(screen.getByTestId("tasks-newest-first-list"))).toEqual(TITLES);
+  });
+
+  it("[AC-016] names the task awaiting confirmation in the dialog", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("delete-btn"));
+
+    const modal = screen.getByTestId("delete-this-task-modal");
+    expect(within(modal).getByText("Buy milk")).toBeInTheDocument();
+  });
+
+  it("[AC-017] removes the confirmed task from the list and reports it deleted", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("delete-task-btn"),
+    );
+
+    expect(screen.queryByTestId("delete-this-task-modal")).not.toBeInTheDocument();
+    expect(screen.getByText("Task deleted")).toBeInTheDocument();
+    expect(titlesOf(screen.getByTestId("tasks-newest-first-list"))).toEqual([
+      "Submit expense report",
+      "Book dentist appointment",
+    ]);
+  });
+
+  it("[AC-017] deletes the confirmed task on the shared list by its id", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("delete-task-btn"),
+    );
+
+    await waitFor(() =>
+      expect(deleteTask).toHaveBeenCalledWith("/tasks/{id}", {
+        params: { path: { id: "tsk_4809" } },
+      }),
+    );
+  });
+
+  it("[AC-017] shows the deleted task to no other visitor loading the shared list", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("delete-task-btn"),
+    );
+    await waitFor(() => expect(deleteTask).toHaveBeenCalled());
+
+    // Another visitor opens the shared list: the server answers without the deleted task.
+    serverReturns([TASKS[0], TASKS[2]]);
+    render(<Tasks />);
+
+    const lists = await screen.findAllByTestId("tasks-newest-first-list");
+    const other = lists[lists.length - 1];
+    expect(titlesOf(other)).toEqual(["Submit expense report", "Book dentist appointment"]);
+    expect(within(other).queryByRole("heading", { name: "Buy milk" })).not.toBeInTheDocument();
+  });
+
+  it("[AC-017] reports a deletion the server refused", async () => {
+    const user = userEvent.setup();
+    deleteTask.mockResolvedValue({ data: undefined, error: { detail: "down" } });
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("delete-task-btn"),
+    );
+
+    expect(await screen.findByText(/could not be removed on the server/)).toBeInTheDocument();
+  });
+
+  it("[AC-018] leaves the task on the list unchanged when the deletion is cancelled", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("cancel-btn"),
+    );
+
+    expect(screen.queryByTestId("delete-this-task-modal")).not.toBeInTheDocument();
+    expect(deleteTask).not.toHaveBeenCalled();
+    const kept = within(screen.getByTestId("tasks-newest-first-list")).getAllByRole("listitem")[1];
+    expect(within(kept).getByRole("heading", { name: "Buy milk" })).toBeInTheDocument();
+    expect(within(kept).getByText("Not done")).toBeInTheDocument();
+    expect(titlesOf(screen.getByTestId("tasks-newest-first-list"))).toEqual(TITLES);
+  });
+
+  it("[AC-018] deletes nothing when a cancelled task is asked about again and confirmed", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[1];
+    await user.click(within(row).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("cancel-btn"),
+    );
+    expect(titlesOf(screen.getByTestId("tasks-newest-first-list"))).toEqual(TITLES);
+
+    const again = within(screen.getByTestId("tasks-newest-first-list")).getAllByRole("listitem")[1];
+    await user.click(within(again).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("delete-task-btn"),
+    );
+
+    expect(titlesOf(screen.getByTestId("tasks-newest-first-list"))).toEqual([
+      "Submit expense report",
+      "Book dentist appointment",
+    ]);
+  });
+
+  it("[AC-019] shows the empty state when the last remaining task is deleted", async () => {
+    const user = userEvent.setup();
+    const list = await renderList([TASKS[1]]);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+
+    await user.click(within(list).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("delete-task-btn"),
+    );
+
+    const empty = screen.getByTestId("no-tasks-yet-empty");
+    expect(within(empty).getByText("No tasks yet")).toBeInTheDocument();
+    expect(screen.queryByTestId("tasks-newest-first-list")).not.toBeInTheDocument();
+  });
+
+  it("[AC-019] keeps the list and no empty state while tasks remain", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[0]).getByTestId("delete-btn"));
+    await user.click(
+      within(screen.getByTestId("delete-this-task-modal")).getByTestId("delete-task-btn"),
+    );
+
+    expect(screen.queryByTestId("no-tasks-yet-empty")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("tasks-newest-first-list")).getAllByRole("listitem"),
+    ).toHaveLength(2);
   });
 });
