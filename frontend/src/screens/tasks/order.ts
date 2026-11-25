@@ -1,14 +1,13 @@
-// @ts-nocheck -- part of the generated Tasks screen, under its JS runtime contract.
-//
 // How a task is read off the wire: its creation time as text, and the one order the list
 // is ever shown in.
+import type { Task } from "./types";
 
 // Creation times arrive as ISO date-times from the API; the list shows them as
 // "YYYY-MM-DD HH:mm" in the reader's own time.
-export function formatStamp(value) {
-  const at = new Date(value);
+export function formatStamp(value: string | null | undefined): string {
+  const at = new Date(value ?? "");
   if (Number.isNaN(at.getTime())) return String(value ?? "");
-  const pad = (n) => String(n).padStart(2, "0");
+  const pad = (n: number) => String(n).padStart(2, "0");
   return (
     at.getFullYear() +
     "-" +
@@ -22,12 +21,12 @@ export function formatStamp(value) {
   );
 }
 
-export function stampValue(value) {
-  const at = Date.parse(value);
+export function stampValue(value: string | null | undefined): number {
+  const at = Date.parse(value ?? "");
   return Number.isNaN(at) ? 0 : at;
 }
 
-function byIdDescending(a, b) {
+function byIdDescending(a: Task, b: Task): number {
   const left = String(a.id ?? "");
   const right = String(b.id ?? "");
   if (left === right) return 0;
@@ -40,7 +39,7 @@ function byIdDescending(a, b) {
 // Two tasks created in the same instant are ordered by id, descending, exactly as the
 // server breaks that tie (app/routers/tasks.py, list_tasks), so the same list never
 // renders in two different orders.
-export function newestFirst(list) {
+export function newestFirst(list: readonly Task[]): Task[] {
   return [...list].sort((a, b) => {
     const byTime = stampValue(b.createdAt) - stampValue(a.createdAt);
     return byTime !== 0 ? byTime : byIdDescending(a, b);

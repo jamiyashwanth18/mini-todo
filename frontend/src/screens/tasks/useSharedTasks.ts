@@ -1,5 +1,3 @@
-// @ts-nocheck -- part of the generated Tasks screen, under its JS runtime contract.
-//
 // The shared list and every change to it, kept away from the markup that shows it.
 //
 // Every change is a call to the server; the row changes on screen at once so the app stays
@@ -15,30 +13,40 @@ import React from "react";
 import { api } from "@/api/client";
 
 import { LOCAL_ID_PREFIX } from "./constants";
+import type { SharedTasks, Task } from "./types";
 
-function isLocal(id) {
+/** What the visitor did to a row while its create was still in flight. */
+type Meanwhile = { done: boolean; deleted: boolean };
+
+/** What any call through the generated client answers with: one of the two, never both. */
+type Answer<T> = { data?: T; error?: unknown };
+
+/** What `send` reports back: whether the server accepted the call, and what it returned. */
+type Sent<T> = { ok: boolean; data?: T };
+
+function isLocal(id: string): boolean {
   return String(id).startsWith(LOCAL_ID_PREFIX);
 }
 
-function refusedSave(title) {
+function refusedSave(title: string): string {
   return "“" + title + "” could not be saved on the server.";
 }
 
-function refusedDelete(title) {
+function refusedDelete(title: string): string {
   return "“" + title + "” could not be removed on the server.";
 }
 
-export function useSharedTasks() {
-  const [tasks, setTasks] = React.useState([]);
+export function useSharedTasks(): SharedTasks {
+  const [tasks, setTasks] = React.useState<Task[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadFailed, setLoadFailed] = React.useState(false);
-  const [freshId, setFreshId] = React.useState(null);
+  const [freshId, setFreshId] = React.useState<string | null>(null);
   // When the server last confirmed a read or a write, and what it refused, if anything.
-  const [syncedAt, setSyncedAt] = React.useState(null);
+  const [syncedAt, setSyncedAt] = React.useState<string | null>(null);
   const [syncError, setSyncError] = React.useState("");
 
   // What the visitor did to a row whose create has not come back yet, by local id.
-  const pending = React.useRef(new Map());
+  const pending = React.useRef<Map<string, Meanwhile>>(new Map());
   // Counts the rows added in this browser session so each gets its own React key. The
   // "local-" prefix keeps such a key apart from any id the server hands out, whatever the
   // ids on the shared list look like.
@@ -63,7 +71,9 @@ export function useSharedTasks() {
     };
   }, []);
 
-  const send = React.useCallback(async (call) => {
+  const send = React.useCallback(async function send<T>(
+    call: () => Promise<Answer<T>>,
+  ): Promise<Sent<T>> {
     try {
       const answer = (await call()) ?? {};
       if (answer.error) return { ok: false };
@@ -76,7 +86,7 @@ export function useSharedTasks() {
   }, []);
 
   const addTask = React.useCallback(
-    async (title) => {
+    async (title: string) => {
       const localId = LOCAL_ID_PREFIX + counter.current++;
       pending.current.set(localId, { done: false, deleted: false });
       setTasks((prev) => [
@@ -85,7 +95,7 @@ export function useSharedTasks() {
       ]);
       setFreshId(localId);
 
-      const { ok, data } = await send(() => api.POST("/tasks", { body: { title } }));
+      const { ok, data } = await send<Task>(() => api.POST("/tasks", { body: { title } }));
       const meanwhile = pending.current.get(localId) ?? { done: false, deleted: false };
       pending.current.delete(localId);
 
@@ -94,9 +104,10 @@ export function useSharedTasks() {
         if (!meanwhile.deleted) setSyncError(refusedSave(title));
         return;
       }
+      const created = data;
       if (meanwhile.deleted) {
         const gone = await send(() =>
-          api.DELETE("/tasks/{id}", { params: { path: { id: data.id } } }),
+          api.DELETE("/tasks/{id}", { params: { path: { id: created.id } } }),
         );
         if (!gone.ok) setSyncError(refusedDelete(title));
         return;
@@ -104,13 +115,13 @@ export function useSharedTasks() {
       // The task as the server stored it: its own id and creation time replace ours, and
       // a status the visitor set while it was in flight is kept and then saved.
       setTasks((prev) =>
-        prev.map((t) => (t.id === localId ? { ...t, ...data, done: meanwhile.done } : t)),
+        prev.map((t) => (t.id === localId ? { ...t, ...created, done: meanwhile.done } : t)),
       );
-      setFreshId(data.id);
-      if (meanwhile.done !== Boolean(data.done)) {
+      setFreshId(created.id);
+      if (meanwhile.done !== Boolean(created.done)) {
         const saved = await send(() =>
           api.PATCH("/tasks/{id}", {
-            params: { path: { id: data.id } },
+            params: { path: { id: created.id } },
             body: { done: meanwhile.done },
           }),
         );
@@ -121,7 +132,7 @@ export function useSharedTasks() {
   );
 
   const setDone = React.useCallback(
-    async (task, done) => {
+    async (task: Task, done: boolean) => {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, done } : t)));
 
       if (isLocal(task.id)) {
@@ -140,7 +151,7 @@ export function useSharedTasks() {
   );
 
   const removeTask = React.useCallback(
-    async (task) => {
+    async (task: Task) => {
       setTasks((prev) => prev.filter((t) => t.id !== task.id));
 
       if (isLocal(task.id)) {

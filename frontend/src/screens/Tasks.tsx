@@ -1,5 +1,3 @@
-// @ts-nocheck -- generated from the approved design under its JS runtime contract; not hand-written TypeScript.
-//
 // The shared to-do list, assembled from the pieces in screens/tasks/: the list and every
 // change to it live in useSharedTasks, the markup in one component per section of the
 // page. What is left here is what the visitor is told and asked: the wording of the
@@ -18,21 +16,33 @@ import TaskList from "./tasks/TaskList";
 import TasksHeader from "./tasks/TasksHeader";
 import { HAIRLINE, MONO } from "./tasks/constants";
 import { newestFirst } from "./tasks/order";
+import type { SharedTasks, Task } from "./tasks/types";
 import { useSharedTasks } from "./tasks/useSharedTasks";
 
 const { AlertCircle } = Icons;
 
 export default function Screen() {
-  const { tasks, loading, loadFailed, freshId, syncedAt, syncError, addTask, setDone, removeTask } =
-    useSharedTasks();
+  // The hook is still written under the generated screens' JS contract, so its contract
+  // with this screen is stated once, in types.ts, rather than inferred from its body.
+  const {
+    tasks,
+    loading,
+    loadFailed,
+    freshId,
+    syncedAt,
+    syncError,
+    addTask,
+    setDone,
+    removeTask,
+  }: SharedTasks = useSharedTasks();
 
   const [title, setTitle] = React.useState("");
   const [error, setError] = React.useState("");
   const [status, setStatus] = React.useState("");
-  const [pendingDelete, setPendingDelete] = React.useState(null);
+  const [pendingDelete, setPendingDelete] = React.useState<Task | null>(null);
 
-  const inputRef = React.useRef(null);
-  const returnFocusRef = React.useRef(null);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
 
   const ordered = React.useMemo(() => newestFirst(tasks), [tasks]);
   const doneCount = tasks.filter((t) => t.done).length;
@@ -41,12 +51,12 @@ export default function Screen() {
     if (inputRef.current) inputRef.current.focus();
   }
 
-  function handleTitleChange(value) {
+  function handleTitleChange(value: string) {
     setTitle(value);
     if (error) setError("");
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) {
@@ -62,13 +72,13 @@ export default function Screen() {
     addTask(trimmed);
   }
 
-  function toggleDone(task) {
+  function toggleDone(task: Task) {
     const done = !task.done;
     setStatus("“" + task.title + "” is now marked " + (done ? "done" : "not done") + ".");
     setDone(task, done);
   }
 
-  function askDelete(task, e) {
+  function askDelete(task: Task, e: React.MouseEvent<HTMLElement>) {
     returnFocusRef.current = e && e.currentTarget ? e.currentTarget : null;
     setPendingDelete(task);
   }

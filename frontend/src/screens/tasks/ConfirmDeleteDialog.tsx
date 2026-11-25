@@ -1,5 +1,3 @@
-// @ts-nocheck -- part of the generated Tasks screen, under its JS runtime contract.
-//
 // Deleting is for good, so it is confirmed first. The dialog names the task it would
 // remove, takes the focus while it is open and closes on Escape.
 import React from "react";
@@ -10,15 +8,32 @@ import { brand } from "@/lib/brand";
 
 import { FOCUS_RING, HAIRLINE, MONO, THICK } from "./constants";
 import { formatStamp } from "./order";
+import type { Task } from "./types";
 
-const { Button } = UI;
+// React 19 hands a function component its `ref` as an ordinary prop, and the kit's Button
+// spreads every prop it is given onto the <button>; its own prop type, which this screen
+// does not own, stops short of saying so.
+const Button = UI.Button as React.FC<
+  React.ComponentProps<typeof UI.Button> & { ref?: React.Ref<HTMLButtonElement> }
+>;
 const { Trash } = Icons;
 
-export default function ConfirmDeleteDialog({ task, onCancel, onConfirm }) {
-  const cancelRef = React.useRef(null);
+export type ConfirmDeleteDialogProps = {
+  /** The task the visitor asked to delete, named in the dialog. */
+  task: Task;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
+
+export default function ConfirmDeleteDialog({
+  task,
+  onCancel,
+  onConfirm,
+}: ConfirmDeleteDialogProps) {
+  const cancelRef = React.useRef<HTMLButtonElement | null>(null);
 
   React.useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCancel();
     };
     document.addEventListener("keydown", onKey);

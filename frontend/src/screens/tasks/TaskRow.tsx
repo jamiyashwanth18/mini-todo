@@ -1,5 +1,3 @@
-// @ts-nocheck -- part of the generated Tasks screen, under its JS runtime contract.
-//
 // One task on the shared list: its number, its title, its status and its creation time,
 // with the only two things that can be done to it.
 import React from "react";
@@ -10,11 +8,20 @@ import { brand } from "@/lib/brand";
 
 import { FOCUS_RING, MONO, THICK } from "./constants";
 import { formatStamp } from "./order";
+import type { Task } from "./types";
 
 const { Button } = UI;
 const { Check, X, Clock, Trash } = Icons;
 
-export default function TaskRow({ task, index, fresh, onToggle, onAskDelete }) {
+export type TaskRowProps = {
+  task: Task;
+  index: number;
+  fresh: boolean;
+  onToggle: (task: Task) => void;
+  onAskDelete: (task: Task, event: React.MouseEvent<HTMLElement>) => void;
+};
+
+export default function TaskRow({ task, index, fresh, onToggle, onAskDelete }: TaskRowProps) {
   return (
     <li
       className={fresh ? "wf-row-in" : undefined}
@@ -37,13 +44,20 @@ export default function TaskRow({ task, index, fresh, onToggle, onAskDelete }) {
           {String(index + 1).padStart(2, "0")}
         </span>
         <div className="min-w-0">
+          {/* The strike-through is the `text-decoration` shorthand on its own: setting the
+              `textDecorationThickness` longhand beside it means the browser is handed two
+              declarations for the same property on every re-render, which React warns
+              about and which leaves the strike showing whichever won last. The design's
+              heavy 3px rule comes from a class instead, where nothing conflicts with it. */}
           <h3
             data-wf={"i-4-0-" + index}
-            className="text-3xl font-bold leading-tight break-words"
+            className={
+              "text-3xl font-bold leading-tight break-words" +
+              (task.done ? " decoration-[3px]" : "")
+            }
             style={{
               fontFamily: brand.fontHeading,
               textDecoration: task.done ? "line-through" : "none",
-              textDecorationThickness: 3,
               color: task.done ? brand.neutralColor : brand.primaryColor,
             }}
           >
@@ -128,7 +142,7 @@ export default function TaskRow({ task, index, fresh, onToggle, onAskDelete }) {
           data-wf="b-5-2"
           data-testid="delete-btn"
           type="button"
-          onClick={(e) => onAskDelete(task, e)}
+          onClick={(event) => onAskDelete(task, event)}
           className={
             "flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-[0.2em] " +
             FOCUS_RING

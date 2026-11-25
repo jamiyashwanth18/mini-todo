@@ -1,8 +1,6 @@
-// @ts-nocheck -- part of the generated Tasks screen, under its JS runtime contract.
-//
 // The shared list itself, in the one state it is in: still loading, unreadable, empty, or
 // the tasks newest first.
-import React from "react";
+import type React from "react";
 
 import * as UI from "@/lib/ui";
 import { Icons } from "@/lib/icons";
@@ -10,11 +8,30 @@ import { brand } from "@/lib/brand";
 
 import { HAIRLINE, MONO, THICK } from "./constants";
 import TaskRow from "./TaskRow";
+import type { Task } from "./types";
 
 const { Empty } = UI;
 const { AlertCircle } = Icons;
 
-export default function TaskList({ tasks, loading, loadFailed, freshId, onToggle, onAskDelete }) {
+export type TaskListProps = {
+  /** The tasks in the order they are shown: newest first. */
+  tasks: readonly Task[];
+  loading: boolean;
+  loadFailed: boolean;
+  /** The id of the task added last, so its row can be shown arriving. */
+  freshId: string | null;
+  onToggle: (task: Task) => void;
+  onAskDelete: (task: Task, event: React.MouseEvent<HTMLElement>) => void;
+};
+
+export default function TaskList({
+  tasks,
+  loading,
+  loadFailed,
+  freshId,
+  onToggle,
+  onAskDelete,
+}: TaskListProps) {
   return (
     /* b-4-0 */
     <section data-wf="b-4-0" className="mt-8">

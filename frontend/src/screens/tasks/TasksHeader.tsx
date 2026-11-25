@@ -1,15 +1,20 @@
-// @ts-nocheck -- part of the generated Tasks screen, under its JS runtime contract.
-//
 // What the page says about itself: the product, the count of tasks and of done ones, and
 // when the server last confirmed what is on screen.
-import React from "react";
-
 import { brand } from "@/lib/brand";
 
 import { MONO, PRODUCT, THICK } from "./constants";
 import { formatStamp } from "./order";
 
-export default function TasksHeader({ total, doneCount, syncedAt }) {
+export type TasksHeaderProps = {
+  /** How many tasks are on the shared list. */
+  total: number;
+  /** How many of them are done. */
+  doneCount: number;
+  /** When the server last confirmed what is on screen, as an ISO date-time. */
+  syncedAt: string | null;
+};
+
+export default function TasksHeader({ total, doneCount, syncedAt }: TasksHeaderProps) {
   return (
     <>
       {/* b-0-0 */}

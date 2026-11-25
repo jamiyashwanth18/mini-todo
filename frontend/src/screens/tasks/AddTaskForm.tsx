@@ -1,8 +1,6 @@
-// @ts-nocheck -- part of the generated Tasks screen, under its JS runtime contract.
-//
 // Adding a task: a title and nothing else, with the character count and the one message a
 // refused add can show.
-import React from "react";
+import type React from "react";
 
 import * as UI from "@/lib/ui";
 import { Icons } from "@/lib/icons";
@@ -10,10 +8,33 @@ import { brand } from "@/lib/brand";
 
 import { FOCUS_RING, HAIRLINE, MAX_TITLE, MONO, THICK } from "./constants";
 
-const { Button, Input, Label } = UI;
+// React 19 hands a function component its `ref` as an ordinary prop, and the kit's Input
+// spreads every prop it is given onto the <input>; its own prop type, which this screen
+// does not own, stops short of saying so.
+const Input = UI.Input as React.FC<
+  React.ComponentProps<typeof UI.Input> & { ref?: React.Ref<HTMLInputElement> }
+>;
+const { Button, Label } = UI;
 const { Plus, AlertCircle } = Icons;
 
-export default function AddTaskForm({ title, error, inputRef, onTitleChange, onSubmit }) {
+export type AddTaskFormProps = {
+  /** The title being typed, owned by the screen so a refused add never loses it. */
+  title: string;
+  /** What is wrong with it, in the words the visitor is shown; empty when nothing is. */
+  error: string;
+  /** The title field, so the screen can put the focus back on it after every add. */
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onTitleChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+};
+
+export default function AddTaskForm({
+  title,
+  error,
+  inputRef,
+  onTitleChange,
+  onSubmit,
+}: AddTaskFormProps) {
   const atLimit = title.length >= MAX_TITLE;
 
   return (
