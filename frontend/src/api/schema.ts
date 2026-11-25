@@ -38,6 +38,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tasks
+         * @description Every task on the shared list, newest-first by creation time; empty when none exist.
+         *
+         *     One list for everybody: done and not-done tasks alike, each in its place in that
+         *     order, none hidden. `id` breaks a tie between two tasks added in the same instant so
+         *     the order never changes between two reads.
+         */
+        get: operations["list_tasks_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -87,6 +111,23 @@ export interface components {
         LoginResponse: {
             /** Token */
             token: string;
+        };
+        /**
+         * TaskRead
+         * @description One task on the shared list: a title, a done/not-done status and when it was added.
+         */
+        TaskRead: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Done */
+            done: boolean;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -155,6 +196,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentUser"];
+                };
+            };
+        };
+    };
+    list_tasks_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRead"][];
                 };
             };
         };

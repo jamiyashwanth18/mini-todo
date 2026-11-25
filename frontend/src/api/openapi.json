@@ -73,6 +73,32 @@
         ]
       }
     },
+    "/tasks": {
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "List Tasks",
+        "description": "Every task on the shared list, newest-first by creation time; empty when none exist.\n\nOne list for everybody: done and not-done tasks alike, each in its place in that\norder, none hidden. `id` breaks a tie between two tasks added in the same instant so\nthe order never changes between two reads.",
+        "operationId": "list_tasks_tasks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Tasks Tasks Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -165,6 +191,36 @@
           "token"
         ],
         "title": "LoginResponse"
+      },
+      "TaskRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "done",
+          "createdAt"
+        ],
+        "title": "TaskRead",
+        "description": "One task on the shared list: a title, a done/not-done status and when it was added."
       },
       "ValidationError": {
         "properties": {

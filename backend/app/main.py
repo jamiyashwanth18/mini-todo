@@ -17,6 +17,7 @@ from sqlalchemy import inspect
 
 from app import auth
 from app.database import DATABASE_URL, engine
+from app.routers import tasks
 from app.seed import seed_from_env
 
 _ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
@@ -63,7 +64,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Mini Todo",
-    description="Mini Todo is a very small web app to keep a to-do list. No sign-in. A user can add a task with a title (required, max 100 characters). The user sees all tasks in a list, newest first, with a message when there are no tasks. The user can mark a task as done (shown struck through) and can delete a task after confirming. Two sprints only: sprint 1 is add task and list tasks; sprint 2 is mark done and delete. Keep it minimal.",
+    description="Mini Todo is a very small web app to keep a to-do list. No sign-in. A user can add a task with a title (required, max 100 characters). The user sees all tasks in a list, newest first, with a message when there are no tasks. The user can mark a task as done (shown struck through) and can delete a task after confirming. Two sprints only: sprint 1 is add task and list tasks; sprint 2 is mark done and delete. Keep it minimal.",  # noqa: E501
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -82,6 +83,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth.router)
+app.include_router(tasks.router)
 
 
 @app.get("/health")

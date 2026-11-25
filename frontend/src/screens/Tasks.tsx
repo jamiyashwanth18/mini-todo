@@ -5,6 +5,7 @@ import React from "react";
 import * as UI from "@/lib/ui";
 import { Icons } from "@/lib/icons";
 import { brand } from "@/lib/brand";
+import { api } from "@/api/client";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { Button, Input, Label, Empty } = UI;
@@ -18,29 +19,41 @@ const NOW_STAMP = "2026-11-25 10:00";
 
 // A task holds a title, a done/not-done status and a creation time. Nothing else is
 // stored or shown: no due date, no priority, no category, no description.
-const SEED_TASKS = [
-  {
-    id: "tsk_4812",
-    title: "Submit expense report",
-    done: false,
-    created_at: "2026-11-25 09:58",
-  },
-  {
-    id: "tsk_4809",
-    title: "Buy milk",
-    done: false,
-    created_at: "2026-11-25 09:42",
-  },
-  {
-    id: "tsk_4791",
-    title: "Book dentist appointment",
-    done: true,
-    created_at: "2026-11-24 16:20",
-  },
-];
+
+// Creation times arrive as ISO date-times from the API; the list shows them as
+// "YYYY-MM-DD HH:mm" in the reader's own time.
+function formatStamp(value) {
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return String(value ?? "");
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    at.getFullYear() +
+    "-" +
+    pad(at.getMonth() + 1) +
+    "-" +
+    pad(at.getDate()) +
+    " " +
+    pad(at.getHours()) +
+    ":" +
+    pad(at.getMinutes())
+  );
+}
+
+function stampValue(value) {
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? 0 : at;
+}
+
+// Newest first by creation time, whatever order the list arrived in. Done tasks are
+// ordered with the rest: they stay in place, never moved or hidden.
+function newestFirst(list) {
+  return [...list].sort((a, b) => stampValue(b.createdAt) - stampValue(a.createdAt));
+}
 
 export default function Screen() {
-  const [tasks, setTasks] = React.useState(SEED_TASKS);
+  const [tasks, setTasks] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadFailed, setLoadFailed] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [error, setError] = React.useState("");
   const [status, setStatus] = React.useState("");
@@ -54,8 +67,27 @@ export default function Screen() {
 
   const thick = `3px solid ${brand.primaryColor}`;
   const hairline = `1px solid ${brand.primaryColor}`;
+  const ordered = React.useMemo(() => newestFirst(tasks), [tasks]);
   const doneCount = tasks.filter((t) => t.done).length;
   const atLimit = title.length >= MAX_TITLE;
+
+  React.useEffect(() => {
+    let live = true;
+    (async () => {
+      const { data, error: failed } = await api.GET("/tasks");
+      if (!live) return;
+      if (failed || !Array.isArray(data)) {
+        setLoadFailed(true);
+      } else {
+        setTasks(data);
+        setLoadFailed(false);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!pendingDelete) return undefined;
@@ -82,7 +114,10 @@ export default function Screen() {
       return;
     }
     const id = "tsk_" + counterRef.current++;
-    setTasks((prev) => [{ id, title: trimmed, done: false, created_at: NOW_STAMP }, ...prev]);
+    setTasks((prev) => [
+      { id, title: trimmed, done: false, createdAt: new Date().toISOString() },
+      ...prev,
+    ]);
     setTitle("");
     setError("");
     setFreshId(id);
@@ -310,7 +345,22 @@ export default function Screen() {
           Tasks, newest first
         </h2>
 
-        {tasks.length === 0 ? (
+        {loading ? (
+          <p
+            className="mt-6 text-xs uppercase tracking-[0.2em]"
+            style={{ fontFamily: MONO, color: brand.neutralColor }}
+          >
+            Loading tasks…
+          </p>
+        ) : loadFailed ? (
+          <p
+            className="mt-6 flex items-center gap-2 px-3 py-3 text-xs font-bold uppercase tracking-[0.15em]"
+            style={{ border: hairline, fontFamily: MONO, color: brand.primaryColor }}
+          >
+            <AlertCircle className="h-4 w-4" aria-hidden="true" />
+            Tasks could not be loaded
+          </p>
+        ) : tasks.length === 0 ? (
           /* b-6-0 */
           <div
             data-wf="b-6-0"
@@ -330,7 +380,7 @@ export default function Screen() {
           </div>
         ) : (
           <ol data-testid="tasks-newest-first-list" className="mt-6 space-y-6">
-            {tasks.map((task, index) => (
+            {ordered.map((task, index) => (
               <li
                 key={task.id}
                 className={task.id === freshId ? "wf-row-in" : undefined}
@@ -385,7 +435,7 @@ export default function Screen() {
                         {task.done ? "Done" : "Not done"}
                       </span>
                       <span aria-hidden="true">·</span>
-                      <span>{task.created_at}</span>
+                      <span>{formatStamp(task.createdAt)}</span>
                     </p>
                   </div>
                 </div>
@@ -514,7 +564,7 @@ export default function Screen() {
                   color: brand.neutralColor,
                 }}
               >
-                {pendingDelete.created_at}
+                {formatStamp(pendingDelete.createdAt)}
               </p>
             </div>
             <div className="grid grid-cols-2" style={{ borderTop: thick }}>
