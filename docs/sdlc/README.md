@@ -5,7 +5,7 @@
 <!-- sdlc:auto:start overview -->
 Mini Todo is a very small web app to keep a to-do list. No sign-in. A user can add a task with a title (required, max 100 characters). The user sees all tasks in a list, newest first, with a message when there are no tasks. The user can mark a task as done (shown struck through) and can delete a task after confirming. Two sprints only: sprint 1 is add task and list tasks; sprint 2 is mark done and delete. Keep it minimal.
 
-**Documentation version:** v4
+**Documentation version:** v5
 <!-- sdlc:auto:end overview -->
 
 ## Contents
@@ -30,7 +30,7 @@ Mini Todo is a very small web app to keep a to-do list. No sign-in. A user can a
 | [Tests](testing/test-cases.md) | 0 tests |
 | [Deployment guide](deployment/deployment-guide.md) | deployed |
 | [Runbook](deployment/runbook.md) | deployed |
-| [Release notes](deployment/release-notes.md) | 1 release |
+| [Release notes](deployment/release-notes.md) | 2 releases |
 | [Traceability matrix](traceability-matrix.md) | 10 requirements |
-| [Changelog](CHANGELOG.md) | 4 versions |
+| [Changelog](CHANGELOG.md) | 5 versions |
 <!-- sdlc:auto:end contents -->
