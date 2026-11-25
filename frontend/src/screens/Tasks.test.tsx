@@ -626,3 +626,98 @@ describe("Tasks — mark a task as done", () => {
     expect(await screen.findByText(/could not be saved on the server/)).toBeInTheDocument();
   });
 });
+
+describe("Tasks — toggle a done task back to not-done", () => {
+  it("[AC-015] drops the strike-through and shows the task as not done again", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[2];
+    const title = within(row).getByRole("heading", { name: "Book dentist appointment" });
+    expect(title.style.textDecoration).toBe("line-through");
+    expect(within(row).getByText("Done")).toBeInTheDocument();
+
+    await user.click(within(row).getByTestId("mark-not-done-btn"));
+
+    expect(title.style.textDecoration).toBe("none");
+    expect(within(row).getByText("Not done")).toBeInTheDocument();
+  });
+
+  it("[AC-015] keeps the task in the same position of the same list", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(
+      within(within(list).getAllByRole("listitem")[2]).getByTestId("mark-not-done-btn"),
+    );
+
+    expect(titlesOf(list)).toEqual(TITLES);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(TASKS.length);
+    const row = within(list).getAllByRole("listitem")[2];
+    expect(
+      within(row).getByRole("heading", { name: "Book dentist appointment" }),
+    ).toBeInTheDocument();
+  });
+
+  it("[AC-015] offers the mark-done control again on the task taken back", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[2];
+    await user.click(within(row).getByTestId("mark-not-done-btn"));
+
+    expect(within(row).queryByTestId("mark-not-done-btn")).not.toBeInTheDocument();
+    expect(within(row).getByTestId("mark-done-btn")).toBeEnabled();
+  });
+
+  it("[AC-015] saves the not-done status for the toggled task", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(
+      within(within(list).getAllByRole("listitem")[2]).getByTestId("mark-not-done-btn"),
+    );
+
+    await waitFor(() =>
+      expect(patchTask).toHaveBeenCalledWith("/tasks/{id}", {
+        params: { path: { id: "tsk_4791" } },
+        body: { done: false },
+      }),
+    );
+  });
+
+  it("[AC-015] reports a not-done status the server refused to save", async () => {
+    const user = userEvent.setup();
+    patchTask.mockResolvedValue({ data: undefined, error: { detail: "down" } });
+    const list = await renderList();
+
+    await user.click(
+      within(within(list).getAllByRole("listitem")[2]).getByTestId("mark-not-done-btn"),
+    );
+
+    expect(await screen.findByText(/could not be saved on the server/)).toBeInTheDocument();
+  });
+
+  it("[AC-015] takes a task marked done in this session back to not done", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[1];
+    await user.click(within(row).getByTestId("mark-done-btn"));
+    expect(within(row).getByText("Done")).toBeInTheDocument();
+
+    await user.click(within(row).getByTestId("mark-not-done-btn"));
+
+    expect(within(row).getByRole("heading", { name: "Buy milk" }).style.textDecoration).toBe(
+      "none",
+    );
+    expect(within(row).getByText("Not done")).toBeInTheDocument();
+    expect(titlesOf(list)).toEqual(TITLES);
+    await waitFor(() =>
+      expect(patchTask).toHaveBeenLastCalledWith("/tasks/{id}", {
+        params: { path: { id: "tsk_4809" } },
+        body: { done: false },
+      }),
+    );
+  });
+});

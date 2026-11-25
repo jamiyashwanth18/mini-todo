@@ -1,5 +1,6 @@
 """The shared task list: GET /tasks newest-first (AC-007, AC-008) and PATCH /tasks/{id}
-setting a task's done status in place, on the one shared list (AC-013, AC-014)."""
+setting a task's done status in place, on the one shared list (AC-013, AC-014), either
+way round so marking done can be taken back (AC-015)."""
 
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -144,6 +145,76 @@ def test_ac013_marking_an_unknown_task_done_is_refused(client: TestClient) -> No
     response = client.patch(f"/tasks/{uuid4()}", json={"done": True})
 
     assert response.status_code == 404, response.text
+
+
+def test_ac015_toggling_a_done_task_back_makes_its_status_not_done(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5, done=True)
+
+    response = client.patch(f"/tasks/{task.id}", json={"done": False})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["done"] is False
+    assert client.get("/tasks").json()[0]["done"] is False
+
+
+def test_ac015_a_task_toggled_back_stays_in_place_in_the_same_list(
+    client: TestClient, db_session: Session
+) -> None:
+    _add_task(db_session, "Oldest", minutes_ago=30)
+    _add_task(db_session, "Newest", minutes_ago=1)
+    middle = _add_task(db_session, "Middle", minutes_ago=10, done=True)
+
+    assert client.patch(f"/tasks/{middle.id}", json={"done": False}).status_code == 200
+
+    tasks = client.get("/tasks").json()
+    assert [task["title"] for task in tasks] == ["Newest", "Middle", "Oldest"]
+    assert [task["done"] for task in tasks] == [False, False, False]
+
+
+def test_ac015_toggling_back_changes_only_the_status(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5, done=True)
+    created_at = task.created_at
+
+    body = client.patch(f"/tasks/{task.id}", json={"done": False}).json()
+
+    assert body["id"] == task.id
+    assert body["title"] == "Buy milk"
+    assert datetime.fromisoformat(body["createdAt"]) == created_at
+
+
+def test_ac015_marking_done_is_reversible_as_often_as_a_visitor_likes(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+
+    statuses = [
+        client.patch(f"/tasks/{task.id}", json={"done": wanted}).json()["done"]
+        for wanted in (True, False, True, False)
+    ]
+
+    assert statuses == [True, False, True, False]
+    assert client.get("/tasks").json()[0]["done"] is False
+
+
+def test_ac015_toggling_back_an_unknown_task_is_refused(client: TestClient) -> None:
+    response = client.patch(f"/tasks/{uuid4()}", json={"done": False})
+
+    assert response.status_code == 404, response.text
+
+
+def test_ac015_a_toggle_back_without_a_done_status_is_refused(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5, done=True)
+
+    response = client.patch(f"/tasks/{task.id}", json={})
+
+    assert response.status_code == 400, response.text
+    assert client.get("/tasks").json()[0]["done"] is True
 
 
 def test_ac014_the_new_status_is_saved_on_the_shared_list_for_every_visitor(
