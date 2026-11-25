@@ -55,11 +55,44 @@ export interface paths {
          */
         get: operations["list_tasks_tasks_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Task
+         * @description Add a task to the shared list: a title, not-done, stamped with the moment it arrived.
+         *
+         *     It becomes the newest task, so the list returns it first until another is added.
+         */
+        post: operations["create_task_tasks_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Task
+         * @description Remove a task from the shared list for good; the SPA confirms before calling this.
+         */
+        delete: operations["delete_task_tasks__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Set Task Done
+         * @description Set a task's done status, either way round.
+         *
+         *     Only the status changes: the task keeps its title and its creation time, so it stays
+         *     exactly where it was in the newest-first list.
+         */
+        patch: operations["set_task_done_tasks__id__patch"];
         trace?: never;
     };
     "/health": {
@@ -113,6 +146,17 @@ export interface components {
             token: string;
         };
         /**
+         * TaskCreate
+         * @description The only thing a new task carries: a title, trimmed, 1-100 characters.
+         *
+         *     Anything else sent along (a due date, a priority, a category, a description) is not
+         *     part of a task and is ignored rather than stored.
+         */
+        TaskCreate: {
+            /** Title */
+            title: string;
+        };
+        /**
          * TaskRead
          * @description One task on the shared list: a title, a done/not-done status and when it was added.
          */
@@ -128,6 +172,18 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+        };
+        /**
+         * TaskUpdate
+         * @description What a change to an existing task may set: its done status, and nothing else.
+         *
+         *     `done` is set either way round, so marking a task done and taking it back are the
+         *     same call. A title cannot be edited once the task exists, so a title sent here is
+         *     ignored, and nothing here moves the task in the list.
+         */
+        TaskUpdate: {
+            /** Done */
+            done: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -216,6 +272,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskRead"][];
+                };
+            };
+        };
+    };
+    create_task_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRead"];
+                };
+            };
+            /** @description The request body breaks a rule of its model (a blank title, a title longer than 100 characters, or a missing done status); the answer names the field and the rule. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_tasks__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of the task on the shared list. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No task with this id is on the list. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_task_done_tasks__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of the task on the shared list. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRead"];
+                };
+            };
+            /** @description The request body breaks a rule of its model (a blank title, a title longer than 100 characters, or a missing done status); the answer names the field and the rule. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No task with this id is on the list. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

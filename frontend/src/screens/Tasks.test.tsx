@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,11 +6,14 @@ import { api } from "@/api/client";
 
 import Tasks from "./Tasks";
 
-vi.mock("@/api/client", () => ({ api: { GET: vi.fn() } }));
+vi.mock("@/api/client", () => ({ api: { GET: vi.fn(), PATCH: vi.fn() } }));
 
 type ApiTask = { id: string; title: string; done: boolean; createdAt: string };
 
 const listTasks = vi.mocked(api.GET as unknown as (path: string) => Promise<unknown>);
+const patchTask = vi.mocked(
+  api.PATCH as unknown as (path: string, init: unknown) => Promise<unknown>,
+);
 
 const TASKS: ApiTask[] = [
   { id: "tsk_4812", title: "Submit expense report", done: false, createdAt: "2026-11-25T09:58:00" },
@@ -45,6 +48,8 @@ function titlesOf(list: HTMLElement) {
 
 beforeEach(() => {
   listTasks.mockReset();
+  patchTask.mockReset();
+  patchTask.mockResolvedValue({ data: undefined, error: undefined });
   serverReturns(TASKS);
 });
 
@@ -503,5 +508,121 @@ describe("Tasks — the list persists across sessions and devices", () => {
     await renderList();
 
     expect(storedValues()).not.toMatch(/Buy milk|Submit expense report/);
+  });
+});
+
+describe("Tasks — mark a task as done", () => {
+  it("[AC-013] shows a not-done task struck through once it is marked done", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[1];
+    const title = within(row).getByRole("heading", { name: "Buy milk" });
+    expect(title.style.textDecoration).toBe("none");
+
+    await user.click(within(row).getByTestId("mark-done-btn"));
+
+    expect(title.style.textDecoration).toBe("line-through");
+    expect(within(row).getByText("Done")).toBeInTheDocument();
+  });
+
+  it("[AC-013] replaces the mark-done control with mark-not-done on a done task", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[1];
+    await user.click(within(row).getByTestId("mark-done-btn"));
+
+    expect(within(row).queryByTestId("mark-done-btn")).not.toBeInTheDocument();
+    expect(within(row).getByTestId("mark-not-done-btn")).toBeInTheDocument();
+  });
+
+  it("[AC-013] keeps the task in the same position in the list once it is done", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    expect(titlesOf(list)).toEqual(TITLES);
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("mark-done-btn"));
+
+    expect(titlesOf(list)).toEqual(TITLES);
+    const rows = within(list).getAllByRole("listitem");
+    expect(within(rows[1]).getByRole("heading", { name: "Buy milk" })).toBeInTheDocument();
+    expect(within(rows[1]).getByTestId("mark-not-done-btn")).toBeInTheDocument();
+  });
+
+  it("[AC-013] takes a done task back to not done in the same position", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const row = within(list).getAllByRole("listitem")[2];
+    const title = within(row).getByRole("heading", { name: "Book dentist appointment" });
+    await user.click(within(row).getByTestId("mark-not-done-btn"));
+
+    expect(title.style.textDecoration).toBe("none");
+    expect(within(row).getByText("Not done")).toBeInTheDocument();
+    expect(titlesOf(list)).toEqual(TITLES);
+  });
+
+  it("[AC-014] saves the new done status on the shared list", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("mark-done-btn"));
+
+    await waitFor(() =>
+      expect(patchTask).toHaveBeenCalledWith("/tasks/{id}", {
+        params: { path: { id: "tsk_4809" } },
+        body: { done: true },
+      }),
+    );
+  });
+
+  it("[AC-014] saves taking a task back to not done on the shared list", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    await user.click(
+      within(within(list).getAllByRole("listitem")[2]).getByTestId("mark-not-done-btn"),
+    );
+
+    await waitFor(() =>
+      expect(patchTask).toHaveBeenCalledWith("/tasks/{id}", {
+        params: { path: { id: "tsk_4791" } },
+        body: { done: false },
+      }),
+    );
+  });
+
+  it("[AC-014] shows the task as done to another visitor loading the shared list", async () => {
+    const user = userEvent.setup();
+    const list = await renderList();
+
+    const visitor = within(list).getAllByRole("listitem")[1];
+    await user.click(within(visitor).getByTestId("mark-done-btn"));
+    await waitFor(() => expect(patchTask).toHaveBeenCalled());
+    screen.getByTestId("tasks-newest-first-list");
+
+    // Another visitor opens the shared list: the server answers with the saved status.
+    serverReturns([TASKS[0], { ...TASKS[1], done: true }, TASKS[2]]);
+    render(<Tasks />);
+
+    const lists = await screen.findAllByTestId("tasks-newest-first-list");
+    const other = lists[lists.length - 1];
+    expect(titlesOf(other)).toEqual(TITLES);
+    const otherRow = within(other).getAllByRole("listitem")[1];
+    expect(within(otherRow).getByRole("heading", { name: "Buy milk" }).style.textDecoration).toBe(
+      "line-through",
+    );
+    expect(within(otherRow).getByText("Done")).toBeInTheDocument();
+  });
+
+  it("[AC-014] reports a status the server refused to save", async () => {
+    const user = userEvent.setup();
+    patchTask.mockResolvedValue({ data: undefined, error: { detail: "down" } });
+    const list = await renderList();
+
+    await user.click(within(within(list).getAllByRole("listitem")[1]).getByTestId("mark-done-btn"));
+
+    expect(await screen.findByText(/could not be saved on the server/)).toBeInTheDocument();
   });
 });

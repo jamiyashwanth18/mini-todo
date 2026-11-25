@@ -1,4 +1,5 @@
-"""US-003: GET /tasks returns the shared list newest-first (AC-007, AC-008)."""
+"""The shared task list: GET /tasks newest-first (AC-007, AC-008) and PATCH /tasks/{id}
+setting a task's done status in place, on the one shared list (AC-013, AC-014)."""
 
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -6,6 +7,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.main import app
 from app.models import Task
 
 _NOW = datetime(2026, 11, 25, 12, 0, tzinfo=UTC)
@@ -76,3 +78,89 @@ def test_ac008_done_tasks_stay_in_place_in_the_same_list(
         "Oldest done",
     ]
     assert [task["done"] for task in tasks] == [False, True, True]
+
+
+def test_ac013_marking_a_task_done_sets_its_status(client: TestClient, db_session: Session) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+
+    response = client.patch(f"/tasks/{task.id}", json={"done": True})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == task.id
+    assert body["done"] is True
+
+
+def test_ac013_a_task_marked_done_keeps_its_position_in_the_list(
+    client: TestClient, db_session: Session
+) -> None:
+    _add_task(db_session, "Oldest", minutes_ago=30)
+    _add_task(db_session, "Newest", minutes_ago=1)
+    middle = _add_task(db_session, "Middle", minutes_ago=10)
+
+    assert client.patch(f"/tasks/{middle.id}", json={"done": True}).status_code == 200
+
+    tasks = client.get("/tasks").json()
+    assert [task["title"] for task in tasks] == ["Newest", "Middle", "Oldest"]
+    assert [task["done"] for task in tasks] == [False, True, False]
+
+
+def test_ac013_only_the_status_changes_not_the_title_or_creation_time(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+    created_at = task.created_at
+
+    body = client.patch(f"/tasks/{task.id}", json={"done": True}).json()
+
+    assert body["title"] == "Buy milk"
+    assert datetime.fromisoformat(body["createdAt"]) == created_at
+
+
+def test_ac013_marking_a_done_task_not_done_takes_it_back(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5, done=True)
+
+    response = client.patch(f"/tasks/{task.id}", json={"done": False})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["done"] is False
+    assert [item["done"] for item in client.get("/tasks").json()] == [False]
+
+
+def test_ac013_a_body_without_a_done_status_is_refused(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+
+    response = client.patch(f"/tasks/{task.id}", json={})
+
+    assert response.status_code == 400, response.text
+    assert client.get("/tasks").json()[0]["done"] is False
+
+
+def test_ac013_marking_an_unknown_task_done_is_refused(client: TestClient) -> None:
+    response = client.patch(f"/tasks/{uuid4()}", json={"done": True})
+
+    assert response.status_code == 404, response.text
+
+
+def test_ac014_the_new_status_is_saved_on_the_shared_list_for_every_visitor(
+    client: TestClient, db_session: Session
+) -> None:
+    task = _add_task(db_session, "Buy milk", minutes_ago=5)
+    db_session.commit()
+
+    assert client.patch(f"/tasks/{task.id}", json={"done": True}).status_code == 200
+
+    another_visitor = TestClient(app)
+    tasks = another_visitor.get("/tasks").json()
+    assert tasks == [
+        {
+            "id": task.id,
+            "title": "Buy milk",
+            "done": True,
+            "createdAt": tasks[0]["createdAt"],
+        }
+    ]
