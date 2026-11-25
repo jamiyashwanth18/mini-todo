@@ -2,6 +2,89 @@
 openapi: 3.1.0
 info:
   title: Mini Todo
-  version: architecture-v0
+  version: architecture-v1
   description: Designed API from the approved architecture (not extracted from code).
-paths: {}
+paths:
+  /tasks:
+    get:
+      summary: Return all tasks on the shared list, newest-first by creation time.
+        Empty array when none exist.
+      description: Return all tasks on the shared list, newest-first by creation time.
+        Empty array when none exist.
+      operationId: get_tasks
+      parameters: []
+      responses:
+        '200':
+          description: '200: [{id, title, done, created_at}] ordered created_at DESC'
+    post:
+      summary: Create a task with a required title (1-100 chars after trimming whitespace),
+        not-done, timestamped now.
+      description: Create a task with a required title (1-100 chars after trimming
+        whitespace), not-done, timestamped now.
+      operationId: post_tasks
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: '{title: string}'
+      responses:
+        '200':
+          description: '201: {id, title, done, created_at}; 422: title required or
+            exceeds 100 characters'
+  /tasks/{id}:
+    patch:
+      summary: Toggle/set a task's done status; reversible, task stays in place.
+      description: Toggle/set a task's done status; reversible, task stays in place.
+      operationId: patch_tasks_id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: '{done: boolean}'
+      responses:
+        '200':
+          description: '200: {id, title, done, created_at}; 404: not found'
+    delete:
+      summary: Permanently remove a task from the shared list. Confirmation is handled
+        in the SPA before this call.
+      description: Permanently remove a task from the shared list. Confirmation is
+        handled in the SPA before this call.
+      operationId: delete_tasks_id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: '204: deleted; 404: not found'
+components:
+  schemas:
+    tasks:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        done:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - title
+      - done
+      - created_at
