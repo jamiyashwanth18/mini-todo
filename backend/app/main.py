@@ -10,6 +10,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,9 @@ from app import auth
 from app.database import DATABASE_URL, engine
 from app.routers import tasks
 from app.seed import seed_from_env
+
+if TYPE_CHECKING:  # imported for the annotation only; Alembic is loaded on startup below.
+    from alembic.script import ScriptDirectory
 
 _ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
 
@@ -46,8 +50,26 @@ def prepare_database() -> None:
     config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
     tables = set(inspect(engine).get_table_names())
     if tables and "alembic_version" not in tables:
-        command.stamp(config, ScriptDirectory.from_config(config).get_base())
+        command.stamp(config, _first_revision(ScriptDirectory.from_config(config)))
     command.upgrade(config, "head")
+
+
+def _first_revision(scripts: "ScriptDirectory") -> str:
+    """The revision a legacy database is stamped with: the one migration without a parent.
+
+    `get_bases()` is the revision map's own answer, a list because a script directory may
+    hold several unrelated histories. Ours holds exactly one, and a database stamped with
+    the wrong revision would either re-run a migration over tables that exist or skip one
+    that has not run, so anything else is refused here rather than half-applied.
+    """
+    bases = scripts.get_bases()
+    if len(bases) != 1:
+        raise RuntimeError(
+            "alembic/versions/ must hold exactly one migration history to stamp a database "
+            f"built before there were migrations, but it has {len(bases)} base revisions: "
+            f"{sorted(bases)}."
+        )
+    return bases[0]
 
 
 @asynccontextmanager

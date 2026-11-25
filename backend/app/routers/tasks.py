@@ -20,8 +20,9 @@ from sqlalchemy.orm import Session
 
 from app.api_model import ApiModel
 from app.database import get_db
+from app.errors import TASK_NOT_FOUND, UNUSABLE_TASK_BODY
 from app.models import Task
-from app.schemas import TaskRead
+from app.schemas import TaskRead, TaskUpdate
 
 # A title is required and, once trimmed, may be no longer than this.
 MAX_TITLE_LENGTH = 100
@@ -47,25 +48,16 @@ class TaskCreate(ApiModel):
         return title
 
 
-class TaskUpdate(ApiModel):
-    """What a change to an existing task may set: its done status, and nothing else.
-
-    A title cannot be edited once the task exists, so a title sent here is ignored.
-    """
-
-    done: bool
-
-
 def _bad_request(invalid: RequestValidationError) -> HTTPException:
     """The first broken rule, as a 400 a caller can act on."""
     errors = invalid.errors()
     if not errors:
-        return HTTPException(status.HTTP_400_BAD_REQUEST, "The request body is not usable.")
+        return UNUSABLE_TASK_BODY.http("The request body is not usable.")
     first = errors[0]
     # loc is ("body", "title"); the first part only says where the value came from.
     field = ".".join(str(part) for part in first.get("loc", ())[1:]) or "body"
     message = str(first.get("msg", "is not usable")).removeprefix("Value error, ")
-    return HTTPException(status.HTTP_400_BAD_REQUEST, f"{field}: {message}")
+    return UNUSABLE_TASK_BODY.http(f"{field}: {message}")
 
 
 class _BadRequestOnUnusableBody(APIRoute):
@@ -90,11 +82,8 @@ class _BadRequestOnUnusableBody(APIRoute):
 
 router = APIRouter(tags=["Tasks"], route_class=_BadRequestOnUnusableBody)
 
-UNUSABLE_BODY = {
-    "description": "The body breaks a rule of its model (a blank title, or one longer than "
-    "100 characters); the answer names the field and the rule."
-}
-NO_SUCH_TASK = {"description": "No task with this id is on the shared list."}
+UNUSABLE_BODY = UNUSABLE_TASK_BODY.response
+NO_SUCH_TASK = TASK_NOT_FOUND.response
 
 TaskId = Annotated[str, Path(alias="id", description="The id of the task on the shared list.")]
 DbSession = Annotated[Session, Depends(get_db)]
@@ -103,7 +92,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 def _task_or_404(session: Session, task_id: str) -> Task:
     task = session.get(Task, task_id)
     if task is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No task with this id is on the list.")
+        raise TASK_NOT_FOUND.http()
     return task
 
 

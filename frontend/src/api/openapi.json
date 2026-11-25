@@ -97,6 +97,149 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Create Task",
+        "description": "Add a task to the shared list: a title, not-done, stamped with the moment it arrived.\n\nIt becomes the newest task, so the list returns it first until another is added.",
+        "operationId": "create_task_tasks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body breaks a rule of its model (a blank title, a title longer than 100 characters, or a missing done status); the answer names the field and the rule."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{id}": {
+      "patch": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Set Task Done",
+        "description": "Set a task's done status, either way round.\n\nOnly the status changes: the task keeps its title and its creation time, so it stays\nexactly where it was in the newest-first list.",
+        "operationId": "set_task_done_tasks__id__patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The id of the task on the shared list.",
+              "title": "Id"
+            },
+            "description": "The id of the task on the shared list."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body breaks a rule of its model (a blank title, a title longer than 100 characters, or a missing done status); the answer names the field and the rule."
+          },
+          "404": {
+            "description": "No task with this id is on the list."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Delete Task",
+        "description": "Remove a task from the shared list for good; the SPA confirms before calling this.",
+        "operationId": "delete_task_tasks__id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The id of the task on the shared list.",
+              "title": "Id"
+            },
+            "description": "The id of the task on the shared list."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No task with this id is on the list."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/health": {
@@ -192,6 +335,20 @@
         ],
         "title": "LoginResponse"
       },
+      "TaskCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "TaskCreate",
+        "description": "The only thing a new task carries: a title, trimmed, 1-100 characters.\n\nAnything else sent along (a due date, a priority, a category, a description) is not\npart of a task and is ignored rather than stored."
+      },
       "TaskRead": {
         "properties": {
           "id": {
@@ -221,6 +378,20 @@
         ],
         "title": "TaskRead",
         "description": "One task on the shared list: a title, a done/not-done status and when it was added."
+      },
+      "TaskUpdate": {
+        "properties": {
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          }
+        },
+        "type": "object",
+        "required": [
+          "done"
+        ],
+        "title": "TaskUpdate",
+        "description": "What a change to an existing task may set: its done status, and nothing else.\n\n`done` is set either way round, so marking a task done and taking it back are the\nsame call. A title cannot be edited once the task exists, so a title sent here is\nignored, and nothing here moves the task in the list."
       },
       "ValidationError": {
         "properties": {

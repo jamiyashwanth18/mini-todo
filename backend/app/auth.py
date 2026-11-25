@@ -5,9 +5,12 @@ smoke check have a real login from the first commit. The frontend and the API ar
 different origins once deployed, so the token travels in the response body and comes back
 as `Authorization: Bearer <token>`, never as a cookie.
 
-JWT_SECRET_KEY signs the tokens, SECRET_KEY after it. Without either (local runs, tests) a
-random key is made per process and a warning says so: tokens then stop working on restart,
-and two worker processes do not accept each other's, so a deployed app must set one.
+JWT_SECRET_KEY signs the tokens, SECRET_KEY after it. An app that says it is deployed
+(ENVIRONMENT, or APP_ENV, naming anything but a development or test run) refuses to start
+without one, rather than signing with a key that dies with the process. Only an undeclared
+or development environment -- a local run, the tests -- falls back to a key made per
+process, loudly: tokens then stop working on restart and two workers do not accept each
+other's.
 
 An email names one account whatever case it is typed in: it is trimmed and lower-cased
 before it is stored and before it is looked up, so Ada@Example.com and ada@example.com are
@@ -40,21 +43,36 @@ TOKEN_LIFETIME = timedelta(hours=12)
 _ALGORITHM = "HS256"
 _log = logging.getLogger(__name__)
 
+# Environments that may run without a configured key, because a token that dies with the
+# process costs nothing there. An unset variable means a developer's own machine.
+_THROWAWAY_KEY_ENVIRONMENTS = frozenset({"", "dev", "development", "local", "test", "testing"})
+_MISSING_KEY = (
+    "Neither JWT_SECRET_KEY nor SECRET_KEY is set. Tokens would be signed with a key made "
+    "for this process: every one of them stops working on the next restart and no other "
+    "worker accepts them. Set JWT_SECRET_KEY to a secret of at least 32 characters."
+)
+
+
+def _environment() -> str:
+    """Which kind of run this is, as the deployment declares it."""
+    return (os.getenv("ENVIRONMENT") or os.getenv("APP_ENV") or "").strip().lower()
+
 
 def _signing_key() -> str:
     """The key the tokens are signed with, from a setting whenever one is set.
 
-    A key made here lives in this process only: another worker signs with a different one
-    and rejects this one's tokens, so the fallback is announced rather than silent.
+    A declared deployment refuses to start without one: a key made here lives in this
+    process only, so another worker signs with a different one and rejects this one's
+    tokens, and a restart signs every visitor out. A development or test run may go
+    without, and is told so.
     """
     configured = os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY")
     if configured:
         return configured
-    _log.warning(
-        "Neither JWT_SECRET_KEY nor SECRET_KEY is set: signing tokens with a key made for "
-        "this process. Tokens stop working on restart and are refused by every other "
-        "worker. Set JWT_SECRET_KEY anywhere the app runs for real."
-    )
+    environment = _environment()
+    if environment not in _THROWAWAY_KEY_ENVIRONMENTS:
+        raise RuntimeError(f"{_MISSING_KEY} ENVIRONMENT is {environment!r}.")
+    _log.warning("%s Running with a throwaway key: %s only.", _MISSING_KEY, environment or "local")
     return secrets.token_urlsafe(32)
 
 

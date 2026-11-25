@@ -41,3 +41,14 @@ class TaskRead(ApiModel):
     title: str
     done: bool
     created_at: datetime
+
+
+class TaskUpdate(ApiModel):
+    """What a change to an existing task may set: its done status, and nothing else.
+
+    `done` is set either way round, so marking a task done and taking it back are the
+    same call. A title cannot be edited once the task exists, so a title sent here is
+    ignored, and nothing here moves the task in the list.
+    """
+
+    done: bool
